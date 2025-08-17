@@ -12,6 +12,7 @@ $Global:CanConnectToGitHub = $false # Initialize, will be set in MAIN
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 #endregion
 
+#region Helper Functions...
 # ╭──────────────────╮
 # │ Helper Functions │
 # ╰──────────────────╯

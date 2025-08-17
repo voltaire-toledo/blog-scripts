@@ -14,15 +14,15 @@ function Write-RBox {
 
     .DESCRIPTION
         This function takes a string, splits it into lines, and displays it
-        within a box constructed of ASCII characters.  It handles ANSI
+        within a box constructed of ASCII characters. It handles ANSI
         escape codes for colored output and adjusts the box size to fit
         the longest line.
 
     .PARAMETER Text
-        The string to display within the box.  Newlines (`n) are
+        The string to display within the box. Newlines (`n) are
         interpreted as line breaks.
     .PARAMETER BorderColor
-        The color of the box border.  Default is Cyan.
+        The color of the box border. Default is Cyan.
         Use $PSStyle.Foreground.<ColorName> to set the color.
 
     .EXAMPLE
@@ -33,8 +33,8 @@ function Write-RBox {
     [string]$BorderColor = $PSStyle.Foreground.Cyan
   )
 
-    # Decoration variables
-    $RstC = $PSStyle.Reset
+  # Decoration variables
+  $RstC = $PSStyle.Reset
 
   # Handle the multiple lines split
   $Lines = $Text -split "`r?`n|`r"

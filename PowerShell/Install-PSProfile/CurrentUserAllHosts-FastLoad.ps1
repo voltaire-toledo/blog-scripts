@@ -7,7 +7,7 @@ $profileLoadStart = Get-Date
 #region Globals...
 # Set the debug mode.  Use $DebugPreference for more control.
 $DebugPreference = 'SilentlyContinue' # Or: 'Continue', 'Stop', 'Inquire'
-$Global:CanConnectToGitHub = $false # Initialize, will be set in MAIN
+
 # Admin Check and Prompt Customization
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 #endregion
@@ -22,12 +22,17 @@ function Write-RBox {
         Displays a multi-line string within a decorated box.
 
     .DESCRIPTION
-        Takes a string, splits it into lines, and displays it within a box constructed of ASCII characters. Handles ANSI escape codes for colored output and adjusts the box size to fit the longest line.
+        This function takes a string, splits it into lines, and displays it
+        within a box constructed of ASCII characters. It handles ANSI
+        escape codes for colored output and adjusts the box size to fit
+        the longest line.
 
     .PARAMETER Text
-        The string to display within the box. Newlines (`n) are interpreted as line breaks.
+        The string to display within the box. Newlines (`n) are
+        interpreted as line breaks.
     .PARAMETER BorderColor
-        The color of the box border. Default is Cyan. Use $PSStyle.Foreground.<ColorName> to set the color.
+        The color of the box border. Default is Cyan.
+        Use $PSStyle.Foreground.<ColorName> to set the color.
 
     .EXAMPLE
         Write-RBox -Text "This is a test`nwith multiple lines."
@@ -56,53 +61,46 @@ function Write-RBox {
   $Spaces = ($MaxLength + 2)
 
   # Print the top border
-  Write-Host "$($BorderColor)╭$("─" * $($Spaces))╮$($RstC)"
+  Write-Host "$($BorderColor)╭$('─' * $($Spaces))╮$($RstC)"
 
   # Print the lines inside the box
   foreach ($Line in $Lines) {
     if ($Line.Contains("#divider#")) {
-      Write-Host "$($BorderColor)├$("$($BorderColor)─" * $($Spaces))$($BorderColor)┤$($RstC)"
+      Write-Host "$($BorderColor)├$('$($BorderColor)─' * $($Spaces))$($BorderColor)┤$($RstC)"
     }
     else {
       $LBorder = "$($BorderColor)│$($RstC) "
       $RBorder = " $($BorderColor)│$($RstC)"
       $PrintableLine = $Line -replace "`e\[[\d;]*m", ''       
-      $PadSpaces = $(" " * $($MaxLength - $PrintableLine.Length))
+      $PadSpaces = $(' ' * $($MaxLength - $PrintableLine.Length))
       Write-Host "$($LBorder)$($Line)$($PadSpaces)$($RBorder)"
     }
   }
   # Print the bottom border
-  Write-Host "$($BorderColor)╰$("─" * $($Spaces))╯$($RstC)"
+  Write-Host "$($BorderColor)╰$('─' * $($Spaces))╯$($RstC)"
 }
 
 function Show-Features {
-  <#
-    .SYNOPSIS
-        Displays help information for the PowerShell profile.
+  [CmdletBinding()]
+  param (
+    [Switch]$PassThru
+  )
 
-    .DESCRIPTION
-        Shows a formatted help message, including available aliases, functions, and their descriptions. Uses Write-RBox to present the information in a user-friendly box.
-
-    .EXAMPLE
-        Show-Features
-  #>
   # Decoration variables
   $SecC = $PSStyle.Foreground.BrightWhite
   $FunC = $PSStyle.Foreground.BrightYellow
   $ParC = $PSStyle.Foreground.Green + $PSStyle.Italic
   $RstC = $PSStyle.Reset
 
-  # Use here-string for better multi-line string handling
-  $HelpText = @"
-$($SecC)PowerShell Profile Help$($RstC)
+  # Part 1: Define the features of the profile script itself.
+  $CoreProfileFeatures = @"`n$($SecC)PowerShell Profile Help$($RstC)
 
 $($SecC)   Host:$($RstC) $($Host.Name)
 $($SecC)Profile:$($RstC) $PROFILE
 #divider#
 $($SecC)Features:$($RstC)
-  - Winget argument completer
-  - Az CLI Argument Completer
-  - Choco argument completer
+  - Fast profile load
+  - Only minimum viable commands loaded
   
 $($SecC)Terraform Aliases:
   $($FunC)tf $($RstC)`t       ⁝ $($FunC)terraform         
@@ -155,12 +153,38 @@ $($SecC)Other Functions:
   $($FunC)Update-PowerShell$($RstC)   ⁝ Checks for PowerShell updates.
   $($FunC)uptime$($RstC)              ⁝ Displays system uptime.
   $($FunC)which $($ParC)[command]$($RstC)     ⁝ Shows the path of the $($ParC)[command]$($RstC).
-  #divider#
-  💡TIP: Run $($FunC)Get-Help  $($ParC)[function]$($RstC) on most of these functions will display more information.
 "@
 
-  # Print the help text in a box
-  Write-RBox -Text $HelpText
+  # Part 2: If -PassThru is used, just return the core features.
+  if ($PassThru) {
+    return $CoreProfileFeatures
+  }
+
+  # Part 3: Aggregate features for display.
+  $AllFeatures = [System.Text.StringBuilder]::new()
+  $AllFeatures.AppendLine($CoreProfileFeatures) | Out-Null
+
+  # Find other modules with Show-Features and append their output.
+  $Modules = Get-Module -ListAvailable | Where-Object { $_.Name -ne 'Microsoft.PowerShell.Core' }
+  foreach ($Module in $Modules) {
+      $ShowFeaturesCmd = Get-Command -Module $Module.Name -Name Show-Features -ErrorAction SilentlyContinue
+      if ($ShowFeaturesCmd) {
+          try {
+              $Features = & $ShowFeaturesCmd -PassThru
+              if ($Features) {
+                  $AllFeatures.AppendLine($Features) | Out-Null
+              }
+          } catch {
+              Write-Warning "Failed to get features from module $($Module.Name): $_"
+          }
+      }
+  }
+  
+  $AllFeatures.AppendLine("#divider#") | Out-Null
+  $AllFeatures.AppendLine("💡TIP: Run $($FunC)Get-Help  $($ParC)[function]$($RstC) on most of these functions will display more information.") | Out-Null
+
+  # Part 4: Display the aggregated features.
+  Write-RBox -Text $AllFeatures.ToString()
 }
 #endregion
 
@@ -171,102 +195,36 @@ $($SecC)Other Functions:
 # ╭─────────────────────╮
 # │ Aliases & Functions │
 # ╰─────────────────────╯
-function tf {
-  <#
-    .SYNOPSIS
-        Runs the terraform command with provided arguments.
 
-    .DESCRIPTION
-        Passes all arguments to the terraform CLI tool.
+# tf: Runs 'terraform' with provided args. Ex: tf plan || See 'tfp'
+function tf { terraform $args }
 
-    .EXAMPLE
-        tf plan
-  #>
-  terraform $args
-}
+# tfi: Runs 'terraform init' with provided args. Ex: tfi 
+function tfi { terraform init -upgrade }
 
-function tfi {
-  <#
-    .SYNOPSIS
-        Runs 'terraform init -upgrade' with provided arguments.
+# tfp: Runs 'terraform plan' with provided arguments. Ex: tfp
+function tfp { terraform plan $args }
 
-    .DESCRIPTION
-        Initializes a Terraform working directory and upgrades modules/providers.
+# tfa: Runs 'terraform apply -auto-approve' with provided arguments.
+function tfa { terraform apply -auto-approve $args }
 
-    .EXAMPLE
-        tfi
-  #>
-  terraform init -upgrade $args
-}
+# tfd: Runs 'terraform destroy -auto-approve' with provided arguments. 
+function tfd { terraform destroy -auto-approve $args }
 
-function tfp {
-  <#
-    .SYNOPSIS
-        Runs 'terraform plan' with provided arguments.
+# o: Opens a directory in Windows explorer. Ex: o $env:USERPROFILE (profile dir)
+function o { explorer.exe $args }
 
-    .DESCRIPTION
-        Creates an execution plan for Terraform.
+# ll: Lists files (including hidden) with details
+function ll { Get-ChildItem $args -Force }
 
-    .EXAMPLE
-        tfp
-  #>
-  terraform plan $args
-}
-
-function tfa {
-  <#
-    .SYNOPSIS
-        Runs 'terraform apply -auto-approve' with provided arguments.
-
-    .DESCRIPTION
-        Applies Terraform changes without prompting for approval.
-
-    .EXAMPLE
-        tfa
-  #>
-  terraform apply -auto-approve $args
-}
-
-function tfd {
-  <#
-    .SYNOPSIS
-        Runs 'terraform destroy -auto-approve' with provided arguments.
-
-    .DESCRIPTION
-        Destroys Terraform-managed infrastructure without prompting for approval.
-
-    .EXAMPLE
-        tfd
-  #>
-  terraform destroy -auto-approve $args
-}
-
-function o {
-  <#
-    .SYNOPSIS
-        Opens a directory in Windows Explorer.
-
-    .DESCRIPTION
-        Uses explorer.exe to open the specified directory or file.
-
-    .EXAMPLE
-        o 'C:\Users\User\Documents'
-  #>
-  explorer.exe $args
-}
-
-function ll {
-  <#
-    .SYNOPSIS
-        Lists files (including hidden) with details.
-
-    .DESCRIPTION
-        Uses Get-ChildItem -Force to list all files and directories, including hidden ones.
-
-    .EXAMPLE
-        ll
-  #>
-  Get-ChildItem $args -Force
+# nano: Open file in terminal using WSL's nano editor. Ex: nano ./package.json || nano d:\path\test.txt
+function nano { 
+  if (get-command bash) {
+    $nFile = $args[0] -replace '^([A-Za-z]):', { "/mnt/$($_.Groups[1].Value.ToLower())" } -replace '\\', '/'
+    bash -c "nano $($nFile)"
+  } else {
+    Write-Host "'bash' command not found. Check your WSL configuration"
+  }
 }
 
 Set-Alias -Name "huh" -Value Show-Features
@@ -307,8 +265,17 @@ if (Test-Path($ChocolateyProfile)) {
 # │ Oh-My-Posh default prompt theme │
 # ╰─────────────────────────────────╯
 # oh-my-posh init pwsh | Invoke-Expression
-oh-my-posh init pwsh --config https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/cobalt2.omp.json | Invoke-Expression
-# oh-my-posh init pwsh --config https://github.com/JanDeDobbeleer/oh-my-posh/blob/main/themes/cloud-native-azure.omp.json | Invoke-Expression
+if (Get-Command oh-my-posh) {
+  oh-my-posh init pwsh --config http/raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/cobalt2.omp.json | Invoke-Expression
+  # oh-my-posh init pwsh --config https://github.com/JanDeDobbeleer/oh-my-posh/blob/main/themes/cloud-native-azure.omp.json | Invoke-Expression
+}
+
+# ╭───────────────╮
+# │ Run fastfetch │
+# ╰───────────────╯
+if (get-command fastfetch) {
+  fastfetch # -c [path_to_jsonc]; See 'fastfetch --gen-config'
+}
 
 # ╭─────╮
 # │ Fin │
