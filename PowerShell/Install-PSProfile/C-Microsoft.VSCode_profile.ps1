@@ -167,6 +167,8 @@ function tfd { terraform destroy -auto-approve $args }
 
 function o { explorer.exe $args }
 
+function ll { Get-ChildItem $args -Force}
+
 ########################################################################
 
 # ╭──────────────╮

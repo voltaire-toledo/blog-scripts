@@ -18,21 +18,28 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 # ╰──────────────────╯
 #region Helper Functions...
 function Write-RBox {
-  <#
+    <#
     .SYNOPSIS
         Displays a multi-line string within a decorated box.
     .DESCRIPTION
-        Takes a string, splits it into lines, and displays it within a box constructed of ASCII characters. Handles ANSI escape codes for colored output and adjusts the box size to fit the longest line.
+        This function takes a string, splits it into lines, and displays it
+        within a box constructed of ASCII characters. It handles ANSI
+        escape codes for colored output and adjusts the box size to fit
+        the longest line.
     .PARAMETER Text
-        The string to display within the box. Newlines (`n) are interpreted as line breaks.
+        The string to display within the box. Newlines (`n) are
+        interpreted as line breaks.
     .PARAMETER BorderColor
-        The color of the box border. Default is Cyan. Use $PSStyle.Foreground.<ColorName> to set the color.
+        The color of the box border. Default is Cyan.
+        Use $PSStyle.Foreground.<ColorName> to set the color.
     .EXAMPLE
         Write-RBox -Text "This is a test`nwith multiple lines."
   #>
   param (
     [string]$Text,
-    [string]$BorderColor = $PSStyle.Foreground.Cyan
+    [string]$BorderColor = $PSStyle.Foreground.Cyan,
+    [int]$Column = 2,
+    [int]$Padding = 1
   )
 
   # Decoration variables
@@ -51,10 +58,111 @@ function Write-RBox {
   }
     
   # Calculate the number of spaces needed for the box
-  $Spaces = ($MaxLength + 2)
+  $Spaces = ($MaxLength + ($Padding * 2))
 
   # Print the top border
-  Write-Host "$($BorderColor)╭$("─" * $($Spaces))╮$($RstC)"
+  Write-Host (' ' * $Column) -NoNewline
+  Write-Host "$($BorderColor)╭$('─' * $($Spaces))╮$($RstC)"
+
+  # Print the lines inside the box
+  foreach ($Line in $Lines) {
+    if ($Line.Contains("#divider#")) {
+      Write-Host (' ' * $Column) -NoNewline
+      Write-Host "$($BorderColor)├$('$($BorderColor)─' * $($Spaces))$($BorderColor)┤$($RstC)"
+    }
+    else {
+      $LBorder = "$($BorderColor)│$($RstC)" + (' ' * $Padding)
+      $RBorder = (' ' * $Padding) + "$($BorderColor)│$($RstC)"
+      $PrintableLine = $Line -replace "`e\[[\d;]*m", ''
+      $PadSpaces = $(' ' * $($MaxLength - $PrintableLine.Length))
+      Write-Host (' ' * $Column) -NoNewline
+      Write-Host "$($LBorder)$($Line)$($PadSpaces)$($RBorder)"
+    }
+  }
+  # Print the bottom border
+  Write-Host (' ' * $Column) -NoNewline
+  Write-Host "$($BorderColor)╰$('─' * $($Spaces))╯$($RstC)"
+}
+
+function Get-TaggedCommands {
+  param(
+    [string]$Tag = '#feature'
+  )
+
+  $Commands = Get-Command -CommandType Function,Alias | Where-Object {
+    (Get-Help $_ -Full).Synopsis -match $Tag
+  }
+  return $Commands
+}
+
+function Show-Features {
+  [CmdletBinding()]
+  param (
+    [Switch]$PassThru
+  )
+
+  # Decoration variables
+  $SecC = $PSStyle.Foreground.BrightWhite
+  $FunC = $PSStyle.Foreground.BrightYellow
+  $ParC = $PSStyle.Foreground.Green + $PSStyle.Italic
+  $RstC = $PSStyle.Reset
+
+  # Configuration
+  $config = @{
+    Column = 2
+    Padding = 1
+    MaxWidth = 80
+  }
+
+  # Part 1: Define the features of the profile script itself.
+  $CoreProfileFeatures = @"
+`n$($SecC)PowerShell Profile Help$($RstC)
+
+$($SecC)   Host:$($RstC) $($Host.Name)
+$($SecC)Profile:$($RstC) $PROFILE
+#divider#
+"@
+
+  # Part 2: If -PassThru is used, just return the core features.
+  if ($PassThru) {
+    return $CoreProfileFeatures
+  }
+
+  # Part 3: Aggregate features for display.
+  $AllFeatures = [System.Text.StringBuilder]::new()
+  $AllFeatures.AppendLine($CoreProfileFeatures) | Out-Null
+
+  $TaggedCommands = Get-TaggedCommands
+  if ($TaggedCommands) {
+    $AllFeatures.AppendLine("$($SecC)Available Commands:$($RstC)") | Out-Null
+    foreach ($Command in $TaggedCommands) {
+      $Synopsis = (Get-Help $Command -Full).Synopsis -replace '#feature'
+      $AllFeatures.AppendLine("  $($FunC)$($Command.Name)$($RstC) - $($Synopsis)") | Out-Null
+    }
+  }
+
+  # Find other modules with Show-Features and append their output.
+  $Modules = Get-Module -ListAvailable | Where-Object { $_.Name -ne 'Microsoft.PowerShell.Core' }
+  foreach ($Module in $Modules) {
+      $ShowFeaturesCmd = Get-Command -Module $Module.Name -Name Show-Features -ErrorAction SilentlyContinue
+      if ($ShowFeaturesCmd) {
+          try {
+              $Features = & $ShowFeaturesCmd -PassThru
+              if ($Features) {
+                  $AllFeatures.AppendLine($Features) | Out-Null
+              }
+          } catch {
+              Write-Warning "Failed to get features from module $($Module.Name): $_"
+          }
+      }
+  }
+  
+  $AllFeatures.AppendLine("#divider#") | Out-Null
+  $AllFeatures.AppendLine("💡TIP: Run $($FunC)Get-Help  $($ParC)[function]$($RstC) on most of these functions will display more information.") | Out-Null
+
+  # Part 4: Display the aggregated features.
+  Write-RBox -Text $AllFeatures.ToString() -Column $config.Column -Padding $config.Padding
+}"─" * $($Spaces))╮$($RstC)"
 
   # Print the lines inside the box
   foreach ($Line in $Lines) {
@@ -165,6 +273,7 @@ $($SecC)Other Functions:
 function Update-Profile {
   <#
     .SYNOPSIS
+        #feature
         Updates the PowerShell profile from GitHub.
     .DESCRIPTION
         Downloads the latest profile script from a specified GitHub URL and replaces the current profile if it has changed.
@@ -196,6 +305,7 @@ function Update-Profile {
 function Edit-Profile {
   <#
     .SYNOPSIS
+        #feature
         Opens the CurrentUserAllHosts profile for editing.
     .DESCRIPTION
         Launches the editor (vim) to edit the $PROFILE.CurrentUserAllHosts file.
@@ -209,6 +319,7 @@ function Edit-Profile {
 function Edit-ThisProfile {
   <#
     .SYNOPSIS
+        #feature
         Opens the CurrentUserCurrentHost profile for editing.
     .DESCRIPTION
         Launches the editor (vim) to edit the $PROFILE.CurrentUserCurrentHost file.
@@ -223,6 +334,7 @@ function Edit-ThisProfile {
 function touch($file) { 
   <#
     .SYNOPSIS
+        #feature
         Creates a new empty file.
     .DESCRIPTION
         Mimics the UNIX 'touch' command by creating a new empty file or updating the timestamp if it exists.
@@ -238,6 +350,7 @@ function touch($file) {
 function ff($name) { 
   <#
     .SYNOPSIS
+        #feature
         Finds files recursively by name.
     .DESCRIPTION
         Searches for files matching the specified name pattern in the current directory and subdirectories.
@@ -253,6 +366,7 @@ function ff($name) {
 function Get-PublicIP { 
   <#
     .SYNOPSIS
+        #feature
         Gets the public IP address.
     .DESCRIPTION
         Retrieves the public IP address of the current machine using an external web service.
@@ -266,6 +380,7 @@ function Get-PublicIP {
 function Update-Profile { 
   <#
     .SYNOPSIS
+        #feature
         Reloads the current user's PowerShell profile.
     .DESCRIPTION
         Invokes the current profile script to reload any changes made.
@@ -279,6 +394,7 @@ function Update-Profile {
 function uptime {
   <#
     .SYNOPSIS
+        #feature
         Displays system uptime in a *NIX-style format.
     .DESCRIPTION
         Calculates and displays the time since the last system boot, including days, hours, minutes, and seconds.
@@ -332,6 +448,7 @@ function uptime {
 function Update-PowerShell {
   <#
     .SYNOPSIS
+        #feature
         Updates to the latest PowerShell 7.x release.
     .DESCRIPTION
         Checks for the latest PowerShell release on GitHub and updates if a newer version is available.
@@ -367,6 +484,7 @@ function Update-PowerShell {
 function Clear-Cache {
   <#
     .SYNOPSIS
+        #feature
         Clears Windows Prefetch, Temp, and browser cache contents.
     .DESCRIPTION
         Removes files from various system and user cache locations to free up space and improve performance.
@@ -399,6 +517,7 @@ function Clear-Cache {
 function unzip ($file) {
   <#
     .SYNOPSIS
+        #feature
         Extracts a zip file to the current directory.
     .DESCRIPTION
         Uses Expand-Archive to extract the specified zip file to the present working directory.
@@ -414,6 +533,7 @@ function unzip ($file) {
 function hb {
   <#
     .SYNOPSIS
+        #feature
         Uploads a file to a hastebin-like service.
     .DESCRIPTION
         Reads the contents of a file and uploads it to a pastebin service, returning the URL and copying it to the clipboard.
@@ -450,6 +570,7 @@ function hb {
 function grep($regex, $dir) {
   <#
     .SYNOPSIS
+        #feature
         Searches for a regex pattern in files.
     .DESCRIPTION
         Uses Select-String to search for a regular expression in files within a directory or from pipeline input.
@@ -470,6 +591,7 @@ function grep($regex, $dir) {
 function df {
   <#
     .SYNOPSIS
+        #feature
         Displays volume information.
     .DESCRIPTION
         Shows information about all volumes on the system using Get-Volume.
@@ -482,6 +604,7 @@ function df {
 function sed($file, $find, $replace) {
   <#
     .SYNOPSIS
+        #feature
         Replaces text in a file.
     .DESCRIPTION
         Replaces all occurrences of a string in a file with another string.
@@ -500,6 +623,7 @@ function sed($file, $find, $replace) {
 function which($name) {
   <#
     .SYNOPSIS
+        #feature
         Shows the path or definition of a command.
     .DESCRIPTION
         Uses Get-Command to display the definition or path of the specified command.
@@ -514,6 +638,7 @@ function which($name) {
 function export($name, $value) {
   <#
     .SYNOPSIS
+        #feature
         Sets an environment variable.
     .DESCRIPTION
         Sets or updates an environment variable for the current session.
@@ -530,6 +655,7 @@ function export($name, $value) {
 function pkill($name) {
   <#
     .SYNOPSIS
+        #feature
         Kills processes by name.
     .DESCRIPTION
         Stops all processes matching the specified name.
@@ -544,6 +670,7 @@ function pkill($name) {
 function pgrep($name) {
   <#
     .SYNOPSIS
+        #feature
         Lists processes by name.
     .DESCRIPTION
         Gets all processes matching the specified name.
@@ -558,6 +685,7 @@ function pgrep($name) {
 function head {
   <#
     .SYNOPSIS
+        #feature
         Displays the first n lines of a file.
     .DESCRIPTION
         Reads and displays the first n lines of the specified file.
@@ -575,6 +703,7 @@ function head {
 function tail {
   <#
     .SYNOPSIS
+        #feature
         Displays the last n lines of a file.
     .DESCRIPTION
         Reads and displays the last n lines of the specified file, optionally following new lines as they are added.
@@ -595,6 +724,7 @@ function tail {
 function nf { 
   <#
     .SYNOPSIS
+        #feature
         Creates a new file in the current directory.
     .DESCRIPTION
         Uses New-Item to create a new file with the specified name in the current directory.
@@ -610,6 +740,7 @@ function nf {
 function mkcd { 
   <#
     .SYNOPSIS
+        #feature
         Creates and changes to a new directory.
     .DESCRIPTION
         Creates a new directory (if it doesn't exist) and sets it as the current location.
@@ -624,6 +755,7 @@ function mkcd {
 function trash($path) {
   <#
     .SYNOPSIS
+        #feature
         Moves a file or directory to the Recycle Bin.
     .DESCRIPTION
         Uses the Shell.Application COM object to move the specified file or directory to the Windows Recycle Bin.
@@ -668,6 +800,7 @@ function trash($path) {
 function docs { 
   <#
     .SYNOPSIS
+        #feature
         Changes to the user's Documents folder.
     .DESCRIPTION
         Sets the current location to the user's Documents folder.
@@ -681,6 +814,7 @@ function docs {
 function dtop { 
   <#
     .SYNOPSIS
+        #feature
         Changes to the user's Desktop folder.
     .DESCRIPTION
         Sets the current location to the user's Desktop folder.
@@ -695,6 +829,7 @@ function dtop {
 function k9 { 
   <#
     .SYNOPSIS
+        #feature
         Kills a process by name.
     .DESCRIPTION
         Stops the process with the specified name.
@@ -708,6 +843,7 @@ function k9 {
 function la { 
   <#
     .SYNOPSIS
+        #feature
         Lists files with details in a table format.
     .DESCRIPTION
         Uses Get-ChildItem and Format-Table to display files and directories in the current location.
@@ -719,6 +855,7 @@ function la {
 function ll { 
   <#
     .SYNOPSIS
+        #feature
         Lists all files (including hidden) with details in a table format.
     .DESCRIPTION
         Uses Get-ChildItem -Force and Format-Table to display all files and directories, including hidden ones.
@@ -732,6 +869,7 @@ function ll {
 function gs { 
   <#
     .SYNOPSIS
+        #feature
         Shows the status of the current Git repository.
     .DESCRIPTION
         Runs 'git status' to display the current state of the repository.
@@ -744,6 +882,7 @@ function gs {
 function ga { 
   <#
     .SYNOPSIS
+        #feature
         Adds all changes to the Git staging area.
     .DESCRIPTION
         Runs 'git add .' to stage all changes in the current repository.
@@ -756,6 +895,7 @@ function ga {
 function gc {
   <#
     .SYNOPSIS
+        #feature
         Commits staged changes with a message.
     .DESCRIPTION
         Runs 'git commit -m' with the provided message to commit staged changes.
@@ -770,6 +910,7 @@ function gc {
 function gp { 
   <#
     .SYNOPSIS
+        #feature
         Pushes committed changes to the remote Git repository.
     .DESCRIPTION
         Runs 'git push' to upload local commits to the remote repository.
@@ -782,6 +923,7 @@ function gp {
 function gcl {
   <#
     .SYNOPSIS
+        #feature
         Clones a Git repository.
     .DESCRIPTION
         Runs 'git clone' with the specified arguments to clone a repository.
@@ -794,6 +936,7 @@ function gcl {
 function gcom {
   <#
     .SYNOPSIS
+        #feature
         Adds, commits, and optionally pushes changes in Git.
     .DESCRIPTION
         Runs 'git add .', 'git commit -m', and optionally 'git push' with the provided arguments.
@@ -808,6 +951,7 @@ function gcom {
 function lazyg {
   <#
     .SYNOPSIS
+        #feature
         Adds, commits, and pushes changes in Git in one step.
     .DESCRIPTION
         Runs 'git add .', 'git commit -m', and 'git push' with the provided arguments.
@@ -825,6 +969,7 @@ function lazyg {
 function sysinfo { 
   <#
     .SYNOPSIS
+        #feature
         Displays system information.
     .DESCRIPTION
         Uses Get-ComputerInfo to display detailed information about the system.
@@ -838,6 +983,7 @@ function sysinfo {
 function flushdns {
   <#
     .SYNOPSIS
+        #feature
         Clears the DNS client cache.
     .DESCRIPTION
         Runs Clear-DnsClientCache and displays a confirmation message.
@@ -852,6 +998,7 @@ function flushdns {
 function cpy { 
   <#
     .SYNOPSIS
+        #feature
         Copies text to the clipboard.
     .DESCRIPTION
         Uses Set-Clipboard to copy the specified text to the clipboard.
@@ -864,6 +1011,7 @@ function cpy {
 function pst { 
   <#
     .SYNOPSIS
+        #feature
         Retrieves text from the clipboard.
     .DESCRIPTION
         Uses Get-Clipboard to get the current clipboard contents.
@@ -876,6 +1024,7 @@ function pst {
 function tf {
   <#
     .SYNOPSIS
+        #feature
         Runs the terraform command with provided arguments.
     .DESCRIPTION
         Passes all arguments to the terraform CLI tool.
@@ -888,6 +1037,7 @@ function tf {
 function tfi {
   <#
     .SYNOPSIS
+        #feature
         Runs 'terraform init -upgrade' with provided arguments.
     .DESCRIPTION
         Initializes a Terraform working directory and upgrades modules/providers.
@@ -900,6 +1050,7 @@ function tfi {
 function tfp {
   <#
     .SYNOPSIS
+        #feature
         Runs 'terraform plan' with provided arguments.
     .DESCRIPTION
         Creates an execution plan for Terraform.
@@ -912,6 +1063,7 @@ function tfp {
 function tfa {
   <#
     .SYNOPSIS
+        #feature
         Runs 'terraform apply -auto-approve' with provided arguments.
     .DESCRIPTION
         Applies Terraform changes without prompting for approval.
@@ -924,6 +1076,7 @@ function tfa {
 function tfd {
   <#
     .SYNOPSIS
+        #feature
         Runs 'terraform destroy -auto-approve' with provided arguments.
     .DESCRIPTION
         Destroys Terraform-managed infrastructure without prompting for approval.
@@ -936,6 +1089,7 @@ function tfd {
 function o {
   <#
     .SYNOPSIS
+        #feature
         Opens a directory in Windows Explorer.
     .DESCRIPTION
         Uses explorer.exe to open the specified directory or file.
@@ -948,6 +1102,7 @@ function o {
 function ll {
   <#
     .SYNOPSIS
+        #feature
         Lists files (including hidden) with details.
     .DESCRIPTION
         Uses Get-ChildItem -Force to list all files and directories, including hidden ones.

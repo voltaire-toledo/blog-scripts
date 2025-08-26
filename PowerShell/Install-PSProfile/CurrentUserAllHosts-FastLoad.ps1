@@ -4,7 +4,9 @@
 
 $profileLoadStart = Get-Date
 
-#region Globals...
+$Global:ProfileFeatures = @()
+
+#region Globals... 
 # Set the debug mode.  Use $DebugPreference for more control.
 $DebugPreference = 'SilentlyContinue' # Or: 'Continue', 'Stop', 'Inquire'
 
@@ -20,26 +22,25 @@ function Write-RBox {
   <#
     .SYNOPSIS
         Displays a multi-line string within a decorated box.
-
     .DESCRIPTION
         This function takes a string, splits it into lines, and displays it
         within a box constructed of ASCII characters. It handles ANSI
         escape codes for colored output and adjusts the box size to fit
         the longest line.
-
     .PARAMETER Text
         The string to display within the box. Newlines (`n) are
         interpreted as line breaks.
     .PARAMETER BorderColor
         The color of the box border. Default is Cyan.
         Use $PSStyle.Foreground.<ColorName> to set the color.
-
     .EXAMPLE
         Write-RBox -Text "This is a test`nwith multiple lines."
   #>
   param (
     [string]$Text,
-    [string]$BorderColor = $PSStyle.Foreground.Cyan
+    [string]$BorderColor = $PSStyle.Foreground.Cyan,
+    [int]$Column = 2,
+    [int]$Padding = 1
   )
 
   # Decoration variables
@@ -58,26 +59,66 @@ function Write-RBox {
   }
     
   # Calculate the number of spaces needed for the box
-  $Spaces = ($MaxLength + 2)
+  $Spaces = ($MaxLength + ($Padding * 2))
 
   # Print the top border
+  Write-Host (' ' * $Column) -NoNewline
   Write-Host "$($BorderColor)╭$('─' * $($Spaces))╮$($RstC)"
 
   # Print the lines inside the box
   foreach ($Line in $Lines) {
     if ($Line.Contains("#divider#")) {
+      Write-Host (' ' * $Column) -NoNewline
       Write-Host "$($BorderColor)├$('$($BorderColor)─' * $($Spaces))$($BorderColor)┤$($RstC)"
     }
     else {
-      $LBorder = "$($BorderColor)│$($RstC) "
-      $RBorder = " $($BorderColor)│$($RstC)"
-      $PrintableLine = $Line -replace "`e\[[\d;]*m", ''       
+      $LBorder = "$($BorderColor)│$($RstC)" + (' ' * $Padding)
+      $RBorder = (' ' * $Padding) + "$($BorderColor)│$($RstC)"
+      $PrintableLine = $Line -replace "`e\[[\d;]*m", ''
       $PadSpaces = $(' ' * $($MaxLength - $PrintableLine.Length))
+      Write-Host (' ' * $Column) -NoNewline
       Write-Host "$($LBorder)$($Line)$($PadSpaces)$($RBorder)"
     }
   }
   # Print the bottom border
+  Write-Host (' ' * $Column) -NoNewline
   Write-Host "$($BorderColor)╰$('─' * $($Spaces))╯$($RstC)"
+}
+
+function Get-TaggedCommands {
+  param(
+    [string]$Tag = '#feature'
+  )
+
+  # Get the path of the current script file
+  $scriptPath = $PROFILE
+
+  # Get only the functions and aliases from the current script
+  $allCommands = Get-Command -CommandType Function, Alias | Where-Object { $_.ScriptBlock.File -eq $scriptPath }
+
+  # Filter the commands
+  $Commands = foreach ($command in $allCommands) {
+    # Get the actual command behind an alias
+    $resolvedCommand = if ($command.CommandType -eq 'Alias') {
+      Get-Command $command.ResolvedCommandName -ErrorAction SilentlyContinue
+    }
+    else {
+      $command
+    }
+
+    # Ensure we have a valid function with a script block
+    if ($null -ne $resolvedCommand -and $resolvedCommand.ScriptBlock) {
+      # Get the content of the script
+      $scriptContent = Get-Content -Path $resolvedCommand.ScriptBlock.File -Raw
+
+      # Check if the synopsis contains the tag
+      if ($scriptContent -match "(?s)<#\s*\.SYNOPSIS\s+(.*?($Tag).*?)\s*#>") {
+        $command
+      }
+    }
+  }
+
+  return $Commands
 }
 
 function Show-Features {
@@ -91,68 +132,22 @@ function Show-Features {
   $FunC = $PSStyle.Foreground.BrightYellow
   $ParC = $PSStyle.Foreground.Green + $PSStyle.Italic
   $RstC = $PSStyle.Reset
+  $DimC = $PSStyle.Dim
+  
+  # Configuration
+  $config = @{
+    Column = 2
+    Padding = 1
+    MaxWidth = 80
+  }
 
   # Part 1: Define the features of the profile script itself.
-  $CoreProfileFeatures = @"`n$($SecC)PowerShell Profile Help$($RstC)
+  $CoreProfileFeatures = @"
+`n$($SecC)PowerShell Profile Help$($RstC)
 
 $($SecC)   Host:$($RstC) $($Host.Name)
 $($SecC)Profile:$($RstC) $PROFILE
 #divider#
-$($SecC)Features:$($RstC)
-  - Fast profile load
-  - Only minimum viable commands loaded
-  
-$($SecC)Terraform Aliases:
-  $($FunC)tf $($RstC)`t       ⁝ $($FunC)terraform         
-  $($FunC)tfi$($RstC)`t       ⁝ $($FunC)terraform init -upgrade        
-  $($FunC)tfp$($RstC)`t       ⁝ $($FunC)terraform plan        
-  $($FunC)tfa$($RstC)`t       ⁝ $($FunC)terraform apply -auto-approve        
-  $($FunC)tfd$($RstC)`t       ⁝ $($FunC)terraform destroy -auto-approve
-  
-$($SecC)Git/GitHub Aliases:
-  $($FunC)g$($RstC)               ⁝ Changes to the GitHub directory.
-  $($FunC)ga$($RstC)              ⁝ $($FunC)git add .
-  $($FunC)gc $($ParC)message$($RstC)      ⁝ $($FunC)git commit -m$($RstC) with the commit's message.
-  $($FunC)gcom $($ParC)message$($RstC)    ⁝ $($FunC)git add . && git commit -m$($RstC) with the commit's string.
-  $($FunC)gp$($RstC)              ⁝ $($FunC)git push
-  $($FunC)gs$($RstC)              ⁝ $($FunC)git status
-  $($FunC)yeetg $($ParC)message$($RstC)   ⁝ Just $($FunC)add-commit-push$($RstC) and yeet that shit!
-  
-$($SecC)Other Functions:
-  $($FunC)cpy $($ParC)[text]$($RstC)          ⁝ Copies text to the clipboard.
-  $($FunC)df$($RstC)                  ⁝ Displays volume information.
-  $($FunC)docs$($RstC)                ⁝ Changes to the Documents folder.
-  $($FunC)dtop$($RstC)                ⁝ Changes to the Desktop folder.
-  $($FunC)Edit-Profile$($RstC)        ⁝ Opens the CurrentUserCurrentHost PSProfile for editing.
-  $($FunC)ep$($RstC)                  ⁝ Opens the CurrentUserAllHosts PSProfile for editing.
-  $($FunC)export $($ParC)[env] [var]$($RstC)  ⁝ Sets an environment variable.
-  $($FunC)ff $($ParC)[name]$($RstC)           ⁝ Finds files recursively.
-  $($FunC)flushdns$($RstC)            ⁝ Clears the DNS cache.
-  $($FunC)Get-PubIP$($RstC)           ⁝ Retrieves the public IP.
-  $($FunC)grep $($ParC)[regex] [dir]$($RstC)  ⁝ Searches for a regex pattern.
-  $($FunC)hb $($ParC)[file]$($RstC)           ⁝ Uploads to hastebin-like service.
-  $($FunC)head$ $($ParC)[path] [n]$($RstC)    ⁝ Displays the first n lines.
-  $($FunC)k9 $($ParC)[name]$($RstC)           ⁝ Kills a process by name.
-  $($FunC)la$($RstC)                  ⁝ Lists files with details.
-  $($FunC)ll$($RstC)                  ⁝ Lists all files (including hidden) with details.
-  $($FunC)mkcd $($ParC)[dir]$($RstC)          ⁝ Creates and changes to a directory.
-  $($FunC)nf $($ParC)[name]$($RstC)           ⁝ Creates a new file.
-  $($FunC)o $($ParC)[dir]$($RstC)             ⁝ Open $($FunC)explorer.exe$($RstC) and set $($ParC)[dir]$($RstC) as the CWD
-  $($FunC)pgrep $($ParC)[name]$($RstC)        ⁝ Lists processes by name.
-  $($FunC)pkill $($ParC)[name]$($RstC)        ⁝ Kills processes by name.
-  $($FunC)pst$($RstC)                 ⁝ Retrieves text from the clipboard.
-  $($FunC)reload-profile$($RstC)      ⁝ Reloads the PowerShell profile.
-  $($FunC)sed $($ParC){1} {2} {3}$($RstC)     ⁝ Replaces text in a file. Values are:
-                        $($ParC){1}$($RstC) = $($ParC)File$($RstC) to replace text inside it
-                        $($ParC){2}$($RstC) = $($ParC)String to find$($RstC) and replace
-                        $($ParC){3}$($RstC) = $($ParC)String to replace$($RstC) what was found
-  $($FunC)sysinfo$($RstC)             ⁝ Displays system information.
-  $($FunC)tail $($ParC)[file] [n]$($RstC)     ⁝ Displays the last $($ParC)[n]$($RstC) lines of the $($ParC)[file]$($RstC).
-  $($FunC)touch $($ParC)[file]$($RstC)        ⁝ Creates a new empty $($ParC)[file]$($RstC).
-  $($FunC)unzip$ $($ParC)[file]$($RstC)       ⁝ Extracts a zip file.
-  $($FunC)Update-PowerShell$($RstC)   ⁝ Checks for PowerShell updates.
-  $($FunC)uptime$($RstC)              ⁝ Displays system uptime.
-  $($FunC)which $($ParC)[command]$($RstC)     ⁝ Shows the path of the $($ParC)[command]$($RstC).
 "@
 
   # Part 2: If -PassThru is used, just return the core features.
@@ -163,6 +158,15 @@ $($SecC)Other Functions:
   # Part 3: Aggregate features for display.
   $AllFeatures = [System.Text.StringBuilder]::new()
   $AllFeatures.AppendLine($CoreProfileFeatures) | Out-Null
+
+  $TaggedCommands = Get-TaggedCommands
+  if ($TaggedCommands) {
+    $AllFeatures.AppendLine("$($SecC)Available Commands:$($RstC)") | Out-Null
+    foreach ($Command in $TaggedCommands) {
+      $Synopsis = (Get-Help $Command -Full).Synopsis -replace '#feature'
+      $AllFeatures.AppendLine("  $($FunC)$($Command.Name)$($RstC) - $($Synopsis)") | Out-Null
+    }
+  }
 
   # Find other modules with Show-Features and append their output.
   $Modules = Get-Module -ListAvailable | Where-Object { $_.Name -ne 'Microsoft.PowerShell.Core' }
@@ -184,7 +188,7 @@ $($SecC)Other Functions:
   $AllFeatures.AppendLine("💡TIP: Run $($FunC)Get-Help  $($ParC)[function]$($RstC) on most of these functions will display more information.") | Out-Null
 
   # Part 4: Display the aggregated features.
-  Write-RBox -Text $AllFeatures.ToString()
+  Write-RBox -Text $AllFeatures.ToString() -Column $config.Column -Padding $config.Padding
 }
 #endregion
 
@@ -192,6 +196,7 @@ $($SecC)Other Functions:
 #endregion
 
 #region Aliases & Functions...
+# Aliases & Functions...
 # ╭─────────────────────╮
 # │ Aliases & Functions │
 # ╰─────────────────────╯

@@ -17,29 +17,28 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 # ╰──────────────────╯
 #region Helper Functions...
 function Write-RBox {
-  <#
+    <#
     .SYNOPSIS
         Displays a multi-line string within a decorated box.
-
     .DESCRIPTION
         This function takes a string, splits it into lines, and displays it
-        within a box constructed of ASCII characters.  It handles ANSI
+        within a box constructed of ASCII characters. It handles ANSI
         escape codes for colored output and adjusts the box size to fit
         the longest line.
-
     .PARAMETER Text
-        The string to display within the box.  Newlines (`n) are
+        The string to display within the box. Newlines (`n) are
         interpreted as line breaks.
     .PARAMETER BorderColor
-        The color of the box border.  Default is Cyan.
+        The color of the box border. Default is Cyan.
         Use $PSStyle.Foreground.<ColorName> to set the color.
-
     .EXAMPLE
         Write-RBox -Text "This is a test`nwith multiple lines."
   #>
   param (
     [string]$Text,
-    [string]$BorderColor = $PSStyle.Foreground.Cyan
+    [string]$BorderColor = $PSStyle.Foreground.Cyan,
+    [int]$Column = 2,
+    [int]$Padding = 1
   )
 
   # Decoration variables
@@ -58,10 +57,111 @@ function Write-RBox {
   }
     
   # Calculate the number of spaces needed for the box
-  $Spaces = ($MaxLength + 2)
+  $Spaces = ($MaxLength + ($Padding * 2))
 
   # Print the top border
-  Write-Host "$($BorderColor)╭$("─" * $($Spaces))╮$($RstC)"
+  Write-Host (' ' * $Column) -NoNewline
+  Write-Host "$($BorderColor)╭$('─' * $($Spaces))╮$($RstC)"
+
+  # Print the lines inside the box
+  foreach ($Line in $Lines) {
+    if ($Line.Contains("#divider#")) {
+      Write-Host (' ' * $Column) -NoNewline
+      Write-Host "$($BorderColor)├$('$($BorderColor)─' * $($Spaces))$($BorderColor)┤$($RstC)"
+    }
+    else {
+      $LBorder = "$($BorderColor)│$($RstC)" + (' ' * $Padding)
+      $RBorder = (' ' * $Padding) + "$($BorderColor)│$($RstC)"
+      $PrintableLine = $Line -replace "`e\[[\d;]*m", ''
+      $PadSpaces = $(' ' * $($MaxLength - $PrintableLine.Length))
+      Write-Host (' ' * $Column) -NoNewline
+      Write-Host "$($LBorder)$($Line)$($PadSpaces)$($RBorder)"
+    }
+  }
+  # Print the bottom border
+  Write-Host (' ' * $Column) -NoNewline
+  Write-Host "$($BorderColor)╰$('─' * $($Spaces))╯$($RstC)"
+}
+
+function Get-TaggedCommands {
+  param(
+    [string]$Tag = '#feature'
+  )
+
+  $Commands = Get-Command -CommandType Function,Alias | Where-Object {
+    (Get-Help $_ -Full).Synopsis -match $Tag
+  }
+  return $Commands
+}
+
+function Show-Features {
+  [CmdletBinding()]
+  param (
+    [Switch]$PassThru
+  )
+
+  # Decoration variables
+  $SecC = $PSStyle.Foreground.BrightWhite
+  $FunC = $PSStyle.Foreground.BrightYellow
+  $ParC = $PSStyle.Foreground.Green + $PSStyle.Italic
+  $RstC = $PSStyle.Reset
+
+  # Configuration
+  $config = @{
+    Column = 2
+    Padding = 1
+    MaxWidth = 80
+  }
+
+  # Part 1: Define the features of the profile script itself.
+  $CoreProfileFeatures = @"
+`n$($SecC)PowerShell Profile Help$($RstC)
+
+$($SecC)   Host:$($RstC) $($Host.Name)
+$($SecC)Profile:$($RstC) $PROFILE
+#divider#
+"@
+
+  # Part 2: If -PassThru is used, just return the core features.
+  if ($PassThru) {
+    return $CoreProfileFeatures
+  }
+
+  # Part 3: Aggregate features for display.
+  $AllFeatures = [System.Text.StringBuilder]::new()
+  $AllFeatures.AppendLine($CoreProfileFeatures) | Out-Null
+
+  $TaggedCommands = Get-TaggedCommands
+  if ($TaggedCommands) {
+    $AllFeatures.AppendLine("$($SecC)Available Commands:$($RstC)") | Out-Null
+    foreach ($Command in $TaggedCommands) {
+      $Synopsis = (Get-Help $Command -Full).Synopsis -replace '#feature'
+      $AllFeatures.AppendLine("  $($FunC)$($Command.Name)$($RstC) - $($Synopsis)") | Out-Null
+    }
+  }
+
+  # Find other modules with Show-Features and append their output.
+  $Modules = Get-Module -ListAvailable | Where-Object { $_.Name -ne 'Microsoft.PowerShell.Core' }
+  foreach ($Module in $Modules) {
+      $ShowFeaturesCmd = Get-Command -Module $Module.Name -Name Show-Features -ErrorAction SilentlyContinue
+      if ($ShowFeaturesCmd) {
+          try {
+              $Features = & $ShowFeaturesCmd -PassThru
+              if ($Features) {
+                  $AllFeatures.AppendLine($Features) | Out-Null
+              }
+          } catch {
+              Write-Warning "Failed to get features from module $($Module.Name): $_"
+          }
+      }
+  }
+  
+  $AllFeatures.AppendLine("#divider#") | Out-Null
+  $AllFeatures.AppendLine("💡TIP: Run $($FunC)Get-Help  $($ParC)[function]$($RstC) on most of these functions will display more information.") | Out-Null
+
+  # Part 4: Display the aggregated features.
+  Write-RBox -Text $AllFeatures.ToString() -Column $config.Column -Padding $config.Padding
+}"─" * $($Spaces))╮$($RstC)"
 
   # Print the lines inside the box
   foreach ($Line in $Lines) {
@@ -177,21 +277,56 @@ $($SecC)Other Functions:
 # ╭─────────────────────╮
 # │ Aliases & Functions │
 # ╰─────────────────────╯
+<#
+.SYNOPSIS
+#feature
+Runs 'terraform' with provided args. Ex: tf plan || See 'tfp'
+#>
 function tf { terraform $args }
 
+<#
+.SYNOPSIS
+#feature
+Runs 'terraform init' with provided args. Ex: tfi 
+#>
 function tfi { terraform init -upgrade $args }
 # set-alias -Name "tfi"  -Value func-tfi
 
+<#
+.SYNOPSIS
+#feature
+Runs 'terraform plan' with provided arguments. Ex: tfp
+#>
 function tfp { terraform plan $args }
 # set-alias -Name "tfp"  -Value func-tfp
 
+<#
+.SYNOPSIS
+#feature
+Runs 'terraform apply -auto-approve' with provided arguments.
+#>
 function tfa { terraform apply -auto-approve $args }
 # set-alias -Name "tfa"  -Value func-tfa
 
+<#
+.SYNOPSIS
+#feature
+Runs 'terraform destroy -auto-approve' with provided arguments. 
+#>
 function tfd { terraform destroy -auto-approve $args }
 
+<#
+.SYNOPSIS
+#feature
+Opens a directory in Windows explorer. Ex: o $env:USERPROFILE (profile dir)
+#>
 function o { explorer.exe $args }
 
+<#
+.SYNOPSIS
+#feature
+Lists files (including hidden) with details
+#>
 function ll { Get-ChildItem $args -Force}
 
 Set-Alias -Name "huh" -Value Show-Features

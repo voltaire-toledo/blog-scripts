@@ -1,0 +1,1 @@
+function Test-Function { <# .SYNOPSIS #feature This is a test function. #> }
