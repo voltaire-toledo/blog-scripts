@@ -1,0 +1,22 @@
+$source = "$env:LOCALAPPDATA\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalState\Assets"
+$destination = $PSScriptRoot
+
+# Ensure the destination exists (not strictly necessary if script directory exists)
+if (-not (Test-Path -Path $destination)) {
+    New-Item -ItemType Directory -Path $destination -Force
+}
+
+$images = Get-ChildItem -Path $source
+foreach ($img in $images) {
+    $temp = Join-Path $env:TEMP ($img.Name + ".jpg")
+    Copy-Item $img.FullName $temp
+    $dimensions = [System.Drawing.Image]::FromFile($temp)
+    if ($dimensions.Width -gt $dimensions.Height) {
+        $destFile = Join-Path $destination ($img.Name + ".jpg")
+        Copy-Item $img.FullName $destFile -Force
+        Write-Host "Copied $destFile"
+    }
+    $dimensions.Dispose()
+    Remove-Item $temp
+}
+pause
