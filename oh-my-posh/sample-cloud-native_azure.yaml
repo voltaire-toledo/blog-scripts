@@ -1,0 +1,104 @@
+$schema: https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json
+version: 4
+final_space: true
+console_title_template: '{{ .Shell }} in {{ .Folder }}'
+blocks:
+  - type: prompt
+    alignment: left
+    segments:
+      - type: session
+        style: diamond
+        foreground: '#ffffff'
+        background: '#c386f1'
+        template: ' {{ if .SSHSession }} {{ end }}{{ .UserName }}@{{ .HostName }} '
+        leading_diamond: 
+        trailing_diamond: 
+      - type: path
+        style: powerline
+        foreground: '#ffffff'
+        background: '#ff479c'
+        template: '   {{ .Path }} '
+        powerline_symbol: 
+        options:
+          style: folder
+      - type: git
+        style: powerline
+        foreground: '#193549'
+        background: '#fffb38'
+        background_templates:
+          - '{{ if or (.Working.Changed) (.Staging.Changed) }}#FF9248{{ end }}'
+          - '{{ if and (gt .Ahead 0) (gt .Behind 0) }}#ff4500{{ end }}'
+          - '{{ if gt .Ahead 0 }}#B388FF{{ end }}'
+          - '{{ if gt .Behind 0 }}#B388FF{{ end }}'
+        template: ' {{ .UpstreamIcon }}{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }}  {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }}  {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }}  {{ .StashCount }}{{ end }} '
+        powerline_symbol: 
+        options:
+          fetch_status: true
+          fetch_upstream_icon: true
+      - type: status
+        style: diamond
+        foreground: '#ffffff'
+        background: '#2e9599'
+        background_templates:
+          - '{{ if gt .Code 0 }}#f1184c{{ end }}'
+        template: '  {{ if gt .Code 0 }} {{ reason .Code }}{{ else }}{{ end }} '
+        leading_diamond: <transparent,background></>
+        trailing_diamond: 
+        options:
+          always_enabled: true
+  - type: prompt
+    alignment: right
+    segments:
+      - type: shell
+        style: plain
+        foreground: '#ffffff'
+        background: '#0077c2'
+        template: <#0077c2,transparent></>  {{ .Name }} <transparent,#0077c2></>
+      - type: battery
+        style: powerline
+        foreground: '#ffffff'
+        background: '#f36943'
+        background_templates:
+          - '{{if eq "Charging" .State.String}}#40c4ff{{end}}'
+          - '{{if eq "Discharging" .State.String}}#ff5722{{end}}'
+          - '{{if eq "Full" .State.String}}#4caf50{{end}}'
+        template: ' {{ if not .Error }}{{ .Icon }}{{ .Percentage }}{{ end }}{{ .Error }} '
+        powerline_symbol: 
+        invert_powerline: true
+        options:
+          charged_icon: ' '
+          charging_icon: ' '
+          discharging_icon: ' '
+      - type: time
+        style: diamond
+        foreground: '#111111'
+        background: '#2e9599'
+        template: '  {{ .CurrentDate | date .Format }} '
+        leading_diamond: 
+        trailing_diamond: 
+        invert_powerline: true
+  - type: prompt
+    alignment: left
+    newline: true
+    segments:
+      - type: kubectl
+        style: diamond
+        foreground: '#000000'
+        background: '#ebcc34'
+        template: '  Kubernetes {{.Context}} cluster {{if .Namespace}}- {{.Namespace}} namespace{{end}} '
+        leading_diamond: 
+        trailing_diamond: 
+      - type: az
+        style: powerline
+        foreground: '#000000'
+        background: '#9ec3f0'
+        template: '  Subscription {{ .Name }} ({{ if .EnvironmentName | contains "AzureCloud" }}{{ "Global" }}{{ else }}{{ .EnvironmentName }}{{ end }}) '
+        powerline_symbol: 
+  - type: prompt
+    alignment: left
+    newline: true
+    segments:
+      - type: text
+        style: plain
+        foreground: '#E06C75'
+        template: ' ~ '

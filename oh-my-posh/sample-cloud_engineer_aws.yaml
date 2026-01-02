@@ -1,0 +1,59 @@
+$schema: https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json
+version: 4
+final_space: true
+blocks:
+  - type: prompt
+    alignment: left
+    segments:
+      - type: os
+        style: diamond
+        foreground: '#ffffff'
+        background: '#003544'
+        leading_diamond: 
+        trailing_diamond: 
+        template: ' {{ .Icon }} '
+      - type: path
+        style: powerline
+        powerline_symbol: 
+        foreground: '#ffffff'
+        background: '#0077b6'
+        template: '  {{ .Path }} '
+        options:
+          style: folder
+          max_depth: 3
+      - type: git
+        style: powerline
+        powerline_symbol: 
+        foreground: '#ffffff'
+        background: '#00b4d8'
+        template: '  {{ .HEAD }} '
+      - type: aws
+        style: powerline
+        powerline_symbol: 
+        foreground: '#ffffff'
+        background: '#FF9900'
+        template: '  {{ .Profile }}{{ if .Region }}@{{ .Region }}{{ end }} '
+      - type: kubectl
+        style: powerline
+        powerline_symbol: 
+        foreground: '#ffffff'
+        background: '#326CE5'
+        template: ' ﴱ {{ .Context }}{{ if .Namespace }}::{{ .Namespace }}{{ end }} '
+      - type: docker
+        style: powerline
+        powerline_symbol: 
+        foreground: '#ffffff'
+        background: '#2496ED'
+        template: '  {{ .Context }} '
+  - type: prompt
+    alignment: left
+    newline: true
+    segments:
+      - type: status
+        style: plain
+        foreground: '#00d9ff'
+        foreground_templates:
+          - '{{ if gt .Code 0 }}#ff6b9d{{ end }}'
+        template: '❯ '
+        options:
+          always_enabled: true
